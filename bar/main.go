@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -747,6 +748,27 @@ func run_loop() {
 		lp.AllowLineWrapping(false)
 		lp.SetCursorVisible(false)
 		return "", state.draw_screen()
+	}
+	// we can detect clickable widget... but fine for now
+	// https://github.com/kovidgoyal/kitty/blob/4d3bbd82e07301bdd6eb1bae5d8c79e8d4fb8d73/tools/tui/loop/mouse.go#L44
+	lp.OnMouseEvent = func(ev *loop.MouseEvent) error {
+		// Check if MOUSE_WHEEL_UP flag is set in ev.Buttons
+		if (ev.Buttons & loop.MOUSE_WHEEL_UP) != 0 {
+			go func() { // Run command in a goroutine to prevent blocking the main loop
+				cmd := exec.Command("control", "sound", "+")
+				if err := cmd.Run(); err != nil {
+					// Error is ignored as requested by the user to avoid polluting the bar.
+				}
+			}()
+		} else if (ev.Buttons & loop.MOUSE_WHEEL_DOWN) != 0 { // Check if MOUSE_WHEEL_DOWN flag is set
+			go func() { // Run command in a goroutine to prevent blocking the main loop
+				cmd := exec.Command("control", "sound", "-")
+				if err := cmd.Run(); err != nil {
+					// Error is ignored as requested by the user to avoid polluting the bar.
+				}
+			}()
+		}
+		return nil
 	}
 	lp.OnResize = func(old_size loop.ScreenSize, new_size loop.ScreenSize) error {
 		return state.draw_screen()
