@@ -19,7 +19,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const FILENAME = "/t/screenshot.png"
+const FILENAME = "/tmp/screenshot.png"
 
 var instance_group = ""
 var panel_cmdline = []string{

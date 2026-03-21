@@ -35,15 +35,19 @@ var debugprintln = tty.DebugPrintln
 var DARK_GRAY, MEDIUM_GRAY, LIGHT_GRAY, GREEN, WHITE, BLACK, YELLOW, RED, ORANGE, DARK_ORANGE style.RGBA
 
 const (
-	LEFT_DIVIDER  = ``
-	RIGHT_DIVIDER = ``
-	LEFT_END      = ``
-	RIGHT_END     = ``
-	VCS_SYMBOL    = ``
-	CLOCK         = `🕒`
-	READONLY      = `🔒`
-	BATTERY       = `🔋`
-	CHARGING      = `🔌`
+	// LEFT_DIVIDER  = ``
+	// RIGHT_DIVIDER = ``
+	LEFT_DIVIDER  = `|`
+	RIGHT_DIVIDER = `|`
+	// LEFT_END      = ``
+	// RIGHT_END     = ``
+	LEFT_END   = ``
+	RIGHT_END  = ``
+	VCS_SYMBOL = ``
+	CLOCK      = `🕒`
+	READONLY   = `🔒`
+	BATTERY    = `🔋`
+	CHARGING   = `🔌`
 )
 
 type network_load_data struct {
@@ -473,13 +477,15 @@ func (self *state) battery() (s Segment) {
 // }}}
 
 func (self *state) date() (s Segment) {
-	d := self.now.Format(" Mon 02, Jan ")
-	t := self.now.Format(" " + CLOCK + " 15:04 ")
-	ds := default_segment(d)
-	ds.bg = MEDIUM_GRAY
+	// d := self.now.Format(" Mon 02, Jan ")
+	// t := self.now.Format(" " + CLOCK + " 15:04 ")
+	t := self.now.Format(" 15:04 ")
+	// ds := default_segment(d)
+	// ds.bg = MEDIUM_GRAY
 	ts := default_segment(t)
 	ts.bg = MEDIUM_GRAY
-	return concat_segments_soft(LIGHT_GRAY, true, ds, ts)
+	// return concat_segments_soft(LIGHT_GRAY, true, ds, ts)
+	return concat_segments_soft(LIGHT_GRAY, true, ts)
 }
 
 // income {{{
@@ -683,7 +689,15 @@ func (self *state) update_screen(_ loop.IdType) error {
 func (self *state) draw_screen() (err error) {
 	sz, _ := self.lp.ScreenSize()
 	self.now = time.Now()
-	right_text := concat_segments_hard(BLACK, true, self.system(), self.date(), self.battery(), self.income(), self.mail()).text
+	right_text := concat_segments_hard(
+		BLACK,
+		true,
+		self.system(),
+		// self.date(),
+		self.battery(),
+		// self.income(),
+		// self.mail(),
+	).text
 	right_sz := wcswidth.Stringwidth(right_text)
 	columns := int(sz.WidthCells)
 	if columns > right_sz {
@@ -700,7 +714,13 @@ func (self *state) draw_screen() (err error) {
 		} else {
 			title = ""
 		}
-		left_text := concat_segments_hard(BLACK, false, w, Segment{text: title, fg: WHITE, bg: DARK_GRAY}).styled_text()
+		left_text := concat_segments_hard(
+			BLACK,
+			false,
+			self.date(),
+			w,
+			Segment{text: title, fg: WHITE, bg: DARK_GRAY},
+		).styled_text()
 		self.lp.QueueWriteString("\r\x1b[K")
 		self.lp.QueueWriteString(left_text)
 		rpos := columns - right_sz
@@ -749,7 +769,15 @@ func launch_panel() {
 		os.Exit(1)
 	}
 	kitty := utils.Which("kitty")
-	unix.Exec(kitty, []string{"kitty", "+kitten", "panel", `--override=background=black`, self_exe, "bar", "inner"}, os.Environ())
+	unix.Exec(kitty, []string{
+		"kitty", "+kitten", "panel",
+		`--override=background=black`,
+		`--override=font_size=10`,
+		`--edge=bottom`,
+		self_exe,
+		"bar",
+		"inner",
+	}, os.Environ())
 }
 
 func Main(args []string) {
