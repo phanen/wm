@@ -29,7 +29,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b // indirect
-	golang.org/x/image v0.36.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/image v0.37.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	howett.net/plist v1.0.1 // indirect
 )
