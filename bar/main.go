@@ -6,6 +6,8 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
+	"log"
+	"log/syslog"
 	"math"
 	"net"
 	"net/http"
@@ -811,6 +813,21 @@ func Main(args []string) {
 		fmt.Fprintln(os.Stderr, args[0], "is not a valid argument")
 		os.Exit(1)
 	}
+
+	// Try to connect to syslog/systemd-journald
+	syslogger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_USER, "wm-bar")
+	if err == nil {
+		log.SetOutput(syslogger)
+		// Systemd automatically timestamps entries, so we just log the code file and line
+		log.SetFlags(log.Lshortfile)
+		log.Println("--- wm-bar inner started (syslog connected) ---")
+	} else {
+		// Fallback to stderr if syslog is unavailable
+		log.SetOutput(os.Stderr)
+		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+		log.Println("--- wm-bar inner started (fallback to stderr) ---")
+	}
+
 	DARK_GRAY, _ = style.ParseColor(`#202020`)
 	MEDIUM_GRAY, _ = style.ParseColor(`#333333`)
 	LIGHT_GRAY, _ = style.ParseColor(`#888888`)
