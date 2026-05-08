@@ -857,9 +857,9 @@ func (self *state) draw_screen() (err error) {
 	right_text := concat_segments_hard(
 		BLACK,
 		true,
+		self.ds_balance(),
 		self.system(),
 		// self.date(),
-		self.ds_balance(),
 		self.battery(),
 		// self.income(),
 		// self.mail(),
