@@ -24,7 +24,6 @@ import (
 	"wm/hypr"
 	"wm/sway"
 
-	"github.com/kovidgoyal/kitty/tools/tty"
 	"github.com/kovidgoyal/kitty/tools/tui/loop"
 	"github.com/kovidgoyal/kitty/tools/utils"
 	"github.com/kovidgoyal/kitty/tools/utils/style"
@@ -34,7 +33,6 @@ import (
 )
 
 var _ = fmt.Print
-var debugprintln = tty.DebugPrintln
 
 var DARK_GRAY, MEDIUM_GRAY, LIGHT_GRAY, GREEN, WHITE, BLACK, YELLOW, RED, ORANGE, DARK_ORANGE style.RGBA
 
@@ -117,7 +115,7 @@ func (s *state) report_failure(segment string, err error) {
 	}
 	if !s.reported_failures.Has(segment) {
 		s.reported_failures.Add(segment)
-		debugprintln(fmt.Sprintf("The segment %s failed with error: %s", segment, err))
+		log.Printf("The segment %s failed with error: %s", segment, err)
 	}
 }
 
@@ -670,7 +668,7 @@ func (self *state) income() (s Segment) {
 		go func() {
 			for {
 				if income, err := fetch_income(self.income_data); err != nil {
-					debugprintln("Failed to fetch income data with error:", err)
+					log.Println("Failed to fetch income data with error:", err)
 				} else {
 					self.lock.Lock()
 					self.income_data.val = fmt.Sprintf(" $%d ", income)
@@ -743,7 +741,7 @@ func (self *state) ds_balance() (s Segment) {
 		go func() {
 			for {
 				if balance, err := fetch_ds_balance(); err != nil {
-					debugprintln("Failed to fetch DeepSeek balance:", err)
+					log.Println("Failed to fetch DeepSeek balance:", err)
 				} else {
 					self.lock.Lock()
 					self.ds_balance_data.val = fmt.Sprintf(" ¥%s ", balance)
@@ -906,7 +904,7 @@ func (self *state) draw_screen() (err error) {
 func run_loop() {
 	lp, err := loop.New()
 	if err != nil {
-		debugprintln(err)
+		log.Println(err)
 		os.Exit(1)
 	}
 	state := state{lp: lp}
@@ -945,7 +943,7 @@ func run_loop() {
 	}
 	err = lp.Run()
 	if err != nil {
-		debugprintln(err)
+		log.Println(err)
 		os.Exit(1)
 	}
 	os.Exit(lp.ExitCode())
