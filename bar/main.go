@@ -92,6 +92,7 @@ type dsBalanceResponse struct {
 type ds_balance_data struct {
 	initialized bool
 	val         string
+	fg, bg      style.RGBA
 }
 
 type state struct {
@@ -737,6 +738,8 @@ func (self *state) ds_balance() (s Segment) {
 	}()
 	if !self.ds_balance_data.initialized {
 		self.ds_balance_data.initialized = true
+		self.ds_balance_data.bg, _ = style.ParseColor(`#333399`)
+		self.ds_balance_data.fg, _ = style.ParseColor(`#ADD8E6`)
 		go func() {
 			for {
 				if balance, err := fetch_ds_balance(); err != nil {
@@ -745,6 +748,7 @@ func (self *state) ds_balance() (s Segment) {
 					self.lock.Lock()
 					self.ds_balance_data.val = fmt.Sprintf(" ¥%s ", balance)
 					self.lock.Unlock()
+					self.lp.WakeupMainThread() // refresh screen
 				}
 				time.Sleep(time.Minute * 2)
 			}
@@ -754,6 +758,9 @@ func (self *state) ds_balance() (s Segment) {
 	val := self.ds_balance_data.val
 	self.lock.Unlock()
 	s.skip = val == ""
+	s.fg = self.ds_balance_data.fg
+	s.bg = self.ds_balance_data.bg
+	s.bold = true
 	s.text = val
 	return
 }
