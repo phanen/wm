@@ -454,7 +454,13 @@ func (self *state) cpu_usage() (s Segment) {
 }
 
 func (self *state) system() (s Segment) {
-	segs := []Segment{self.uptime(), self.cpu_usage(), self.memory_usage(), self.system_load(), self.network_load()}
+	segs := []Segment{
+		// self.uptime(),
+		self.cpu_usage(),
+		self.memory_usage(),
+		self.system_load(),
+		self.network_load(),
+	}
 	s = concat_segments_soft(LIGHT_GRAY, true, segs...)
 	s.name = "system"
 	return s
