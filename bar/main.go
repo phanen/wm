@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -76,6 +77,23 @@ type income_data struct {
 	fg, bg                          style.RGBA
 }
 
+type dsBalanceInfo struct {
+	Currency        string `json:"currency"`
+	TotalBalance    string `json:"total_balance"`
+	GrantedBalance  string `json:"granted_balance"`
+	ToppedUpBalance string `json:"topped_up_balance"`
+}
+
+type dsBalanceResponse struct {
+	IsAvailable  bool            `json:"is_available"`
+	BalanceInfos []dsBalanceInfo `json:"balance_infos"`
+}
+
+type ds_balance_data struct {
+	initialized bool
+	val         string
+}
+
 type state struct {
 	lp                            *loop.Loop
 	update_timer                  loop.IdType
@@ -85,6 +103,7 @@ type state struct {
 	network_load_data             map[string]network_load_data
 	battery_history               map[string]*battery_history
 	income_data                   income_data
+	ds_balance_data               ds_balance_data
 	workspace_name, window_title  string
 	wm_initialized                bool
 	lock                          sync.Mutex
@@ -671,6 +690,74 @@ func (self *state) income() (s Segment) {
 	return
 }
 
+func fetch_ds_balance() (string, error) {
+	token := os.Getenv("DEEPSEEK_API_KEY")
+	if token == "" {
+		return "", fmt.Errorf("DEEPSEEK_API_KEY environment variable not set")
+	}
+
+	req, err := http.NewRequest("GET", "https://api.deepseek.com/user/balance", nil)
+	if err != nil {
+		return "", fmt.Errorf("Failed to create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Failed to fetch balance: %w", err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("Failed to read response: %w", err)
+	}
+
+	var result dsBalanceResponse
+	if err := json.Unmarshal(data, &result); err != nil {
+		return "", fmt.Errorf("Failed to parse response: %w", err)
+	}
+
+	if !result.IsAvailable || len(result.BalanceInfos) == 0 {
+		return "", fmt.Errorf("Account not available or no balance info")
+	}
+
+	return result.BalanceInfos[0].TotalBalance, nil
+}
+
+func (self *state) ds_balance() (s Segment) {
+	var err error
+	defer func() {
+		if err != nil {
+			s.skip = true
+			self.report_failure("ds_balance", err)
+		}
+	}()
+	if !self.ds_balance_data.initialized {
+		self.ds_balance_data.initialized = true
+		go func() {
+			for {
+				if balance, err := fetch_ds_balance(); err != nil {
+					debugprintln("Failed to fetch DeepSeek balance:", err)
+				} else {
+					self.lock.Lock()
+					self.ds_balance_data.val = fmt.Sprintf(" ¥%s ", balance)
+					self.lock.Unlock()
+				}
+				time.Sleep(time.Minute * 2)
+			}
+		}()
+	}
+	self.lock.Lock()
+	val := self.ds_balance_data.val
+	self.lock.Unlock()
+	s.skip = val == ""
+	s.text = val
+	return
+}
+
 // }}}
 
 // mail {{{
@@ -767,6 +854,7 @@ func (self *state) draw_screen() (err error) {
 		true,
 		self.system(),
 		// self.date(),
+		self.ds_balance(),
 		self.battery(),
 		// self.income(),
 		// self.mail(),
