@@ -77,17 +77,18 @@ type income_data struct {
 }
 
 type state struct {
-	lp                           *loop.Loop
-	update_timer                 loop.IdType
-	now                          time.Time
-	reported_failures            *utils.Set[string]
-	num_cpus                     int
-	network_load_data            map[string]network_load_data
-	battery_history              map[string]*battery_history
-	income_data                  income_data
-	workspace_name, window_title string
-	wm_initialized               bool
-	lock                         sync.Mutex
+	lp                            *loop.Loop
+	update_timer                  loop.IdType
+	now                           time.Time
+	reported_failures             *utils.Set[string]
+	num_cpus                      int
+	network_load_data             map[string]network_load_data
+	battery_history               map[string]*battery_history
+	income_data                   income_data
+	workspace_name, window_title  string
+	wm_initialized                bool
+	lock                          sync.Mutex
+	prev_cpu_idle, prev_cpu_total uint64
 }
 
 func (s *state) report_failure(segment string, err error) {
@@ -365,8 +366,77 @@ func (self *state) network_load() (s Segment) {
 	return default_segment(" " + r + " " + t + " ")
 }
 
+func (self *state) memory_usage() (s Segment) {
+	data, err := os.ReadFile("/proc/meminfo")
+	defer func() {
+		if err != nil {
+			s.skip = true
+			self.report_failure("memory_usage", err)
+		}
+	}()
+	if err != nil {
+		return
+	}
+	var total, available uint64
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		switch fields[0] {
+		case "MemTotal:":
+			total, _ = strconv.ParseUint(fields[1], 10, 64)
+		case "MemAvailable:":
+			available, _ = strconv.ParseUint(fields[1], 10, 64)
+		}
+	}
+	if total == 0 {
+		return
+	}
+	used := total - available
+	percent := float64(used) / float64(total) * 100
+	return default_segment(fmt.Sprintf(" %d%% ", int(percent)))
+}
+
+func (self *state) cpu_usage() (s Segment) {
+	data, err := os.ReadFile("/proc/stat")
+	defer func() {
+		if err != nil {
+			s.skip = true
+			self.report_failure("cpu_usage", err)
+		}
+	}()
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	if len(lines) == 0 {
+		return
+	}
+	fields := strings.Fields(lines[0])
+	if len(fields) < 5 || fields[0] != "cpu" {
+		return
+	}
+	var total uint64
+	for i := 1; i < len(fields); i++ {
+		val, _ := strconv.ParseUint(fields[i], 10, 64)
+		total += val
+	}
+	idle, _ := strconv.ParseUint(fields[4], 10, 64)
+	dt := total - self.prev_cpu_total
+	di := idle - self.prev_cpu_idle
+	self.prev_cpu_total = total
+	self.prev_cpu_idle = idle
+	if dt == 0 {
+		s.skip = true
+		return
+	}
+	percent := 100 * float64(dt-di) / float64(dt)
+	return default_segment(fmt.Sprintf(" %d%% ", int(percent)))
+}
+
 func (self *state) system() (s Segment) {
-	segs := []Segment{self.uptime(), self.system_load(), self.network_load()}
+	segs := []Segment{self.uptime(), self.cpu_usage(), self.memory_usage(), self.system_load(), self.network_load()}
 	s = concat_segments_soft(LIGHT_GRAY, true, segs...)
 	s.name = "system"
 	return s
