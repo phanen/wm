@@ -1,5 +1,5 @@
-// Package quotas fetches AI provider subscription quota / balance and joins
-// them into a single line suitable for a status bar.
+// Package modelquota fetches AI provider subscription quota / balance
+// and joins them into a single line suitable for a status bar.
 package modelquota
 
 import (
@@ -21,16 +21,17 @@ const (
 	DefaultTTL       = 60
 )
 
-// Plan describes a single subscription to poll. The Token value is the env
-// var NAME holding the secret; the real value is read from os.Getenv at
-// fetch time so secrets stay out of config files and version control.
+// Plan describes a single subscription to poll. Token is the actual
+// bearer value, embedded directly in WM_PLANS (or plans.json). The
+// secrets-management layer (sops) provides the JSON; this struct
+// does no further resolution.
 type Plan struct {
-	Name     string `json:"name"`
-	Label    string `json:"label"`
-	Kind     string `json:"kind"`
-	TokenEnv string `json:"token_env"`
-	Region   string `json:"region"`
-	TTL      int    `json:"ttl"`
+	Name   string `json:"name"`
+	Label  string `json:"label"`
+	Kind   string `json:"kind"`
+	Token  string `json:"token"`
+	Region string `json:"region"`
+	TTL    int    `json:"ttl"`
 }
 
 func (p Plan) displayLabel() string {
@@ -41,13 +42,6 @@ func (p Plan) displayLabel() string {
 		return p.Name
 	}
 	return "?"
-}
-
-func (p Plan) token() string {
-	if p.TokenEnv == "" {
-		return ""
-	}
-	return os.Getenv(p.TokenEnv)
 }
 
 // LoadPlans reads WM_PLANS (JSON) or falls back to $WM_PLANS_FILE or
@@ -86,12 +80,15 @@ func LoadPlans() []Plan {
 	return plans
 }
 
-// PlanFetcher returns the rendered segment for a plan, or an error.
+// PlanFetcher returns the rendered segment for a plan. The bearer
+// token is taken from p.Token (resolved upstream by whoever built
+// WM_PLANS).
 type PlanFetcher func(ctx context.Context, p Plan) (string, error)
 
-// FetchAll runs every configured plan fetcher concurrently, preserving the
-// declared order, and returns the joined line. Failed plans are logged to
-// stderr and omitted. Returns "" if all plans fail or none are configured.
+// FetchAll runs every configured plan fetcher concurrently, preserving
+// the declared order, and returns the joined line. Failed plans are
+// logged to stderr and omitted. Returns "" if all plans fail or none
+// are configured.
 func FetchAll() string {
 	return FetchAllContext(context.Background())
 }
@@ -160,12 +157,8 @@ func fetchOne(parent context.Context, p Plan) string {
 		log.Printf("model-quota: [%s] unknown kind: %s", p.Name, p.Kind)
 		return ""
 	}
-	if p.token() == "" {
-		env := p.TokenEnv
-		if env == "" {
-			env = "token"
-		}
-		log.Printf("model-quota: [%s] %s unset", p.Name, env)
+	if p.Token == "" {
+		log.Printf("model-quota: [%s] token empty in WM_PLANS", p.Name)
 		return ""
 	}
 	ctx, cancel := context.WithTimeout(parent, PerPlanTimeout)

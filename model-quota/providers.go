@@ -16,12 +16,11 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 	if p.Region == "cn" || p.Region == "minimax_cn" {
 		base = "https://api.minimaxi.com"
 	}
-	token := p.token()
-	if token == "" {
+	if p.Token == "" {
 		return "", fmt.Errorf("token unset")
 	}
 	data, err := httpGetJSON(ctx, base+"/v1/api/openplatform/coding_plan/remains", map[string]string{
-		"Authorization": "Bearer " + token,
+		"Authorization": "Bearer " + p.Token,
 		"Accept":        "application/json",
 		"User-Agent":    UserAgent,
 	})
@@ -62,12 +61,11 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 // fetchDeepseekBalance queries the DeepSeek account balance endpoint
 // and formats it as "<label> <sym><balance>".
 func fetchDeepseekBalance(ctx context.Context, p Plan) (string, error) {
-	token := p.token()
-	if token == "" {
+	if p.Token == "" {
 		return "", fmt.Errorf("token unset")
 	}
 	data, err := httpGetJSON(ctx, "https://api.deepseek.com/user/balance", map[string]string{
-		"Authorization": "Bearer " + token,
+		"Authorization": "Bearer " + p.Token,
 		"Accept":        "application/json",
 		"User-Agent":    UserAgent,
 	})
