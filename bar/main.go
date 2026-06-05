@@ -83,18 +83,28 @@ type income_data struct {
 }
 
 type state struct {
-	lp                            *loop.Loop
-	update_timer                  loop.IdType
-	now                           time.Time
-	reported_failures             *utils.Set[string]
-	num_cpus                      int
-	network_load_data             map[string]network_load_data
-	battery_history               map[string]*battery_history
-	income_data                   income_data
-	workspace_name, window_title  string
-	wm_initialized                bool
-	lock                          sync.Mutex
-	prev_cpu_idle, prev_cpu_total uint64
+	lp                           *loop.Loop
+	update_timer                 loop.IdType
+	now                          time.Time
+	reported_failures            *utils.Set[string]
+	num_cpus                     int
+	network_load_data            map[string]network_load_data
+	battery_history              map[string]*battery_history
+	income_data                  income_data
+	workspace_name, window_title string
+	wm_initialized               bool
+	lock                         sync.Mutex
+	// Per-core tick snapshots from the previous /proc/stat read. The
+	// aggregate "cpu" line is normalized to total core capacity (so
+	// 1 busy core on 8 reads as 12%, which is unintuitive). We track
+	// per-core and render the count of busy cores, which scales with
+	// core count and tells you the system is at full tilt at a glance.
+	prev_cpu_cores []cpuCoreStat
+}
+
+type cpuCoreStat struct {
+	total uint64
+	idle  uint64
 }
 
 func (s *state) report_failure(segment string, err error) {
@@ -413,6 +423,9 @@ func (self *state) memory_usage() (s Segment) {
 }
 
 func (self *state) cpu_usage() (s Segment) {
+	if self.num_cpus < 1 {
+		self.num_cpus = max(1, runtime.NumCPU())
+	}
 	data, err := os.ReadFile("/proc/stat")
 	defer func() {
 		if err != nil {
@@ -423,30 +436,76 @@ func (self *state) cpu_usage() (s Segment) {
 	if err != nil {
 		return
 	}
-	lines := strings.Split(string(data), "\n")
-	if len(lines) == 0 {
-		return
-	}
-	fields := strings.Fields(lines[0])
-	if len(fields) < 5 || fields[0] != "cpu" {
-		return
-	}
-	var total uint64
-	for i := 1; i < len(fields); i++ {
-		val, _ := strconv.ParseUint(fields[i], 10, 64)
-		total += val
-	}
-	idle, _ := strconv.ParseUint(fields[4], 10, 64)
-	dt := total - self.prev_cpu_total
-	di := idle - self.prev_cpu_idle
-	self.prev_cpu_total = total
-	self.prev_cpu_idle = idle
-	if dt == 0 {
+	cur := parsePerCoreCpu(string(data), self.num_cpus)
+	prev := self.prev_cpu_cores
+	self.prev_cpu_cores = cur
+	if prev == nil {
+		// First read — no delta yet.
 		s.skip = true
 		return
 	}
-	percent := 100 * float64(dt-di) / float64(dt)
-	return default_segment(fmt.Sprintf(" %2d%% ", int(percent)))
+
+	busy := 0
+	for i := 0; i < self.num_cpus && i < len(cur) && i < len(prev); i++ {
+		dt := cur[i].total - prev[i].total
+		di := cur[i].idle - prev[i].idle
+		if dt == 0 {
+			continue
+		}
+		// Count a core as "busy" when it spent more than half its
+		// ticks on non-idle work over the sampling window.
+		if 100*(dt-di) > 50*dt {
+			busy++
+		}
+	}
+
+	// Color: green-ish white idle, yellow when more than half the
+	// cores are busy, red when fully saturated.
+	fg := WHITE
+	switch {
+	case busy*2 >= self.num_cpus:
+		fg = YELLOW
+	case busy == self.num_cpus:
+		fg = RED
+	}
+	return Segment{
+		text: fmt.Sprintf(" %d/%d ", busy, self.num_cpus),
+		fg:   fg,
+		bg:   DARK_GRAY,
+		bold: true,
+	}
+}
+
+// parsePerCoreCpu walks /proc/stat and returns one cpuCoreStat per
+// physical core index it sees (cpu0, cpu1, …). Unread or out-of-range
+// indices are left zero. The aggregate "cpu" line is skipped.
+func parsePerCoreCpu(s string, maxCores int) []cpuCoreStat {
+	out := make([]cpuCoreStat, maxCores)
+	lines := strings.Split(s, "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 5 || len(fields[0]) < 4 {
+			continue
+		}
+		if fields[0] == "cpu" || !strings.HasPrefix(fields[0], "cpu") {
+			continue
+		}
+		var idx int
+		if _, err := fmt.Sscanf(fields[0], "cpu%d", &idx); err != nil {
+			continue
+		}
+		if idx < 0 || idx >= maxCores {
+			continue
+		}
+		var total uint64
+		for j := 1; j < len(fields); j++ {
+			v, _ := strconv.ParseUint(fields[j], 10, 64)
+			total += v
+		}
+		idle, _ := strconv.ParseUint(fields[4], 10, 64)
+		out[idx] = cpuCoreStat{total: total, idle: idle}
+	}
+	return out
 }
 
 func (self *state) system() (s Segment) {
