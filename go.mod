@@ -7,7 +7,7 @@ replace github.com/kovidgoyal/kitty => ../../lazy/kitty
 
 require (
 	github.com/kovidgoyal/kitty v0.0.0-00010101000000-000000000000
-	golang.org/x/sys v0.43.0
+	golang.org/x/sys v0.44.0
 )
 
 require (
@@ -25,12 +25,12 @@ require (
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd // indirect
 	github.com/seancfoley/bintree v1.3.1 // indirect
 	github.com/seancfoley/ipaddress-go v1.7.1 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.3 // indirect
+	github.com/shirou/gopsutil/v4 v4.26.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b // indirect
-	golang.org/x/image v0.39.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/image v0.40.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	howett.net/plist v1.0.1 // indirect
 )

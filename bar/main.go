@@ -2,8 +2,7 @@ package bar
 
 import (
 	"bytes"
-	"crypto/tls"
-	"crypto/x509"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -69,10 +67,10 @@ type battery_history struct {
 }
 
 type income_data struct {
-	initialized                     bool
-	certificate_path, url, user, pw string
-	val                             string
-	fg, bg                          style.RGBA
+	initialized bool
+	script_path string
+	val         string
+	fg, bg      style.RGBA
 }
 
 type dsBalanceInfo struct {
@@ -587,39 +585,37 @@ func (self *state) date() (s Segment) {
 
 // income {{{
 
-func fetch_income(income_data income_data) (ans int, err error) {
-	pool := x509.NewCertPool()
-	cert, err := os.ReadFile(income_data.certificate_path)
+func fetch_income(script_path string) (string, error) {
+	if script_path == "" {
+		return "", fmt.Errorf("income script path is empty")
+	}
+
+	python := "python3"
+	if _, err := exec.LookPath(python); err != nil {
+		python = "python"
+		if _, err := exec.LookPath(python); err != nil {
+			return "", fmt.Errorf("neither python3 nor python is available")
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, python, script_path)
+	data, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("income script timed out after 15s")
+	}
 	if err != nil {
-		return -1, fmt.Errorf("Failed to read certificate from %s with error: %w", income_data.certificate_path, err)
+		return "", fmt.Errorf("failed to run %s: %w: %s", script_path, err, strings.TrimSpace(utils.UnsafeBytesToString(data)))
 	}
-	if !pool.AppendCertsFromPEM(cert) {
-		return -1, fmt.Errorf("Failed to append certificates to pool")
+
+	val := strings.TrimSpace(utils.UnsafeBytesToString(data))
+	val = strings.Join(strings.Fields(val), " ")
+	if val == "" {
+		return "", fmt.Errorf("income script %s produced no output", script_path)
 	}
-	tlsConfig := &tls.Config{RootCAs: pool}
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	client := &http.Client{Transport: transport}
-	req, err := http.NewRequest("GET", income_data.url, nil)
-	if err != nil {
-		return -1, fmt.Errorf("Failed to create HTTP request for url %s with error: %w", income_data.url, err)
-	}
-	req.SetBasicAuth(income_data.user, income_data.pw)
-	resp, err := client.Do(req)
-	if err != nil {
-		return -1, fmt.Errorf("Failed to fetch %s with error: %w", income_data.url, err)
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return -1, fmt.Errorf("Failed to fetch %s with error: %w", income_data.url, err)
-	}
-	text := utils.UnsafeBytesToString(data)
-	text, _, _ = strings.Cut(text, ":")
-	val, err := strconv.ParseFloat(text, 64)
-	if err != nil {
-		return -1, fmt.Errorf("Got invalid income data: %#v", string(data))
-	}
-	return int(math.Round(val)), nil
+	return val, nil
 }
 
 func (self *state) income() (s Segment) {
@@ -634,51 +630,31 @@ func (self *state) income() (s Segment) {
 		self.income_data.initialized = true
 		self.income_data.bg, _ = style.ParseColor(`#333399`)
 		self.income_data.fg, _ = style.ParseColor(`#ADD8E6`)
-		var data []byte
-		if data, err = os.ReadFile(filepath.Join(os.Getenv("PENV"), "income.py")); err != nil {
+		penv := os.Getenv("PENV")
+		if penv == "" {
+			var home string
+			if home, err = os.UserHomeDir(); err != nil {
+				s.skip = true
+				return
+			}
+			penv = filepath.Join(home, ".bin")
+		}
+		self.income_data.script_path = filepath.Join(penv, "income.py")
+		if _, err = os.Stat(self.income_data.script_path); err != nil {
+			err = fmt.Errorf("failed to find income script at %s: %w", self.income_data.script_path, err)
 			s.skip = true
 			return
 		}
-		re := regexp.MustCompile(`(?m)^(\w+)\s*=\s*'([^']+)'`)
-		for _, line := range utils.Splitlines(utils.UnsafeBytesToString(data)) {
-			matches := re.FindStringSubmatch(line)
-			if len(matches) == 3 {
-				switch matches[1] {
-				case "CERTIFICATE_PATH":
-					self.income_data.certificate_path = utils.Expanduser(matches[2])
-				case "USER":
-					self.income_data.user = matches[2]
-				case "URL":
-					self.income_data.url = matches[2]
-				case "PW":
-					self.income_data.pw = matches[2]
-				}
-			}
-		}
-		if self.income_data.certificate_path == "" {
-			err = fmt.Errorf("Failed to find CERTIFICATE_PATH in income.py")
-			return
-		}
-		if self.income_data.url == "" {
-			err = fmt.Errorf("Failed to find URL in income.py")
-			return
-		}
-		if self.income_data.user == "" {
-			err = fmt.Errorf("Failed to find USER in income.py")
-			return
-		}
-		if self.income_data.user == "" {
-			err = fmt.Errorf("Failed to find PW in income.py")
-			return
-		}
+
 		go func() {
 			for {
-				if income, err := fetch_income(self.income_data); err != nil {
-					log.Println("Failed to fetch income data with error:", err)
+				if income, err := fetch_income(self.income_data.script_path); err != nil {
+					log.Println("Failed to fetch income data:", err)
 				} else {
 					self.lock.Lock()
-					self.income_data.val = fmt.Sprintf(" $%d ", income)
+					self.income_data.val = " " + income + " "
 					self.lock.Unlock()
+					self.lp.WakeupMainThread()
 				}
 				time.Sleep(time.Second * 60)
 			}
@@ -863,11 +839,11 @@ func (self *state) draw_screen() (err error) {
 	right_text := concat_segments_hard(
 		BLACK,
 		true,
+		self.income(),
 		self.ds_balance(),
 		self.system(),
 		// self.date(),
 		self.battery(),
-		// self.income(),
 		// self.mail(),
 	).text
 	right_sz := wcswidth.Stringwidth(right_text)
