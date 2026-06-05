@@ -2,18 +2,14 @@ package bar
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"log/syslog"
 	"math"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -26,6 +22,7 @@ import (
 	"github.com/kovidgoyal/kitty/tools/utils"
 	"github.com/kovidgoyal/kitty/tools/utils/style"
 	"github.com/kovidgoyal/kitty/tools/wcswidth"
+	"wm/model-quota"
 
 	"golang.org/x/sys/unix"
 )
@@ -68,25 +65,6 @@ type battery_history struct {
 
 type income_data struct {
 	initialized bool
-	script_path string
-	val         string
-	fg, bg      style.RGBA
-}
-
-type dsBalanceInfo struct {
-	Currency        string `json:"currency"`
-	TotalBalance    string `json:"total_balance"`
-	GrantedBalance  string `json:"granted_balance"`
-	ToppedUpBalance string `json:"topped_up_balance"`
-}
-
-type dsBalanceResponse struct {
-	IsAvailable  bool            `json:"is_available"`
-	BalanceInfos []dsBalanceInfo `json:"balance_infos"`
-}
-
-type ds_balance_data struct {
-	initialized bool
 	val         string
 	fg, bg      style.RGBA
 }
@@ -100,7 +78,6 @@ type state struct {
 	network_load_data             map[string]network_load_data
 	battery_history               map[string]*battery_history
 	income_data                   income_data
-	ds_balance_data               ds_balance_data
 	workspace_name, window_title  string
 	wm_initialized                bool
 	lock                          sync.Mutex
@@ -585,72 +562,34 @@ func (self *state) date() (s Segment) {
 
 // income {{{
 
-func fetch_income(script_path string) (string, error) {
-	if script_path == "" {
-		return "", fmt.Errorf("income script path is empty")
+func truncateForLog(s string, max int) string {
+	if len(s) <= max {
+		return s
 	}
-
-	python := "python3"
-	if _, err := exec.LookPath(python); err != nil {
-		python = "python"
-		if _, err := exec.LookPath(python); err != nil {
-			return "", fmt.Errorf("neither python3 nor python is available")
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, python, script_path)
-	data, err := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		return "", fmt.Errorf("income script timed out after 15s")
-	}
-	if err != nil {
-		return "", fmt.Errorf("failed to run %s: %w: %s", script_path, err, strings.TrimSpace(utils.UnsafeBytesToString(data)))
-	}
-
-	val := strings.TrimSpace(utils.UnsafeBytesToString(data))
-	val = strings.Join(strings.Fields(val), " ")
-	if val == "" {
-		return "", fmt.Errorf("income script %s produced no output", script_path)
-	}
-	return val, nil
+	return s[:max] + "..."
 }
 
 func (self *state) income() (s Segment) {
-	var err error
-	defer func() {
-		if err != nil {
-			s.skip = true
-			self.report_failure("income", err)
-		}
-	}()
 	if !self.income_data.initialized {
 		self.income_data.initialized = true
 		self.income_data.bg, _ = style.ParseColor(`#333399`)
 		self.income_data.fg, _ = style.ParseColor(`#ADD8E6`)
-		penv := os.Getenv("PENV")
-		if penv == "" {
-			var home string
-			if home, err = os.UserHomeDir(); err != nil {
-				s.skip = true
-				return
-			}
-			penv = filepath.Join(home, ".bin")
-		}
-		self.income_data.script_path = filepath.Join(penv, "income.py")
-		if _, err = os.Stat(self.income_data.script_path); err != nil {
-			err = fmt.Errorf("failed to find income script at %s: %w", self.income_data.script_path, err)
-			s.skip = true
-			return
+
+		plans := modelquota.LoadPlans()
+		log.Printf("income: starting, %d plans configured, polling every 60s", len(plans))
+		for i, p := range plans {
+			log.Printf("income:   plan[%d] name=%s kind=%s region=%s token_env=%s label=%s",
+				i, p.Name, p.Kind, p.Region, p.TokenEnv, p.Label)
 		}
 
 		go func() {
 			for {
-				if income, err := fetch_income(self.income_data.script_path); err != nil {
-					log.Println("Failed to fetch income data:", err)
+				log.Println("income: tick — FetchAll()")
+				income := modelquota.FetchAll()
+				if income == "" {
+					log.Println("income: empty result (all plans failed or none configured — see stderr from model-quota)")
 				} else {
+					log.Printf("income: got %q", truncateForLog(income, 200))
 					self.lock.Lock()
 					self.income_data.val = " " + income + " "
 					self.lock.Unlock()
@@ -666,80 +605,6 @@ func (self *state) income() (s Segment) {
 	s.skip = val == ""
 	s.fg = self.income_data.fg
 	s.bg = self.income_data.bg
-	s.bold = true
-	s.text = val
-	return
-}
-
-func fetch_ds_balance() (string, error) {
-	token := os.Getenv("DEEPSEEK_API_KEY")
-	if token == "" {
-		return "", fmt.Errorf("DEEPSEEK_API_KEY environment variable not set")
-	}
-
-	req, err := http.NewRequest("GET", "https://api.deepseek.com/user/balance", nil)
-	if err != nil {
-		return "", fmt.Errorf("Failed to create request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("Failed to fetch balance: %w", err)
-	}
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("Failed to read response: %w", err)
-	}
-
-	var result dsBalanceResponse
-	if err := json.Unmarshal(data, &result); err != nil {
-		return "", fmt.Errorf("Failed to parse response: %w", err)
-	}
-
-	if !result.IsAvailable || len(result.BalanceInfos) == 0 {
-		return "", fmt.Errorf("Account not available or no balance info")
-	}
-
-	return result.BalanceInfos[0].TotalBalance, nil
-}
-
-func (self *state) ds_balance() (s Segment) {
-	var err error
-	defer func() {
-		if err != nil {
-			s.skip = true
-			self.report_failure("ds_balance", err)
-		}
-	}()
-	if !self.ds_balance_data.initialized {
-		self.ds_balance_data.initialized = true
-		self.ds_balance_data.bg, _ = style.ParseColor(`#333399`)
-		self.ds_balance_data.fg, _ = style.ParseColor(`#ADD8E6`)
-		go func() {
-			for {
-				if balance, err := fetch_ds_balance(); err != nil {
-					log.Println("Failed to fetch DeepSeek balance:", err)
-				} else {
-					self.lock.Lock()
-					self.ds_balance_data.val = fmt.Sprintf(" ¥%s ", balance)
-					self.lock.Unlock()
-					self.lp.WakeupMainThread() // refresh screen
-				}
-				time.Sleep(time.Minute * 2)
-			}
-		}()
-	}
-	self.lock.Lock()
-	val := self.ds_balance_data.val
-	self.lock.Unlock()
-	s.skip = val == ""
-	s.fg = self.ds_balance_data.fg
-	s.bg = self.ds_balance_data.bg
 	s.bold = true
 	s.text = val
 	return
@@ -840,7 +705,6 @@ func (self *state) draw_screen() (err error) {
 		BLACK,
 		true,
 		self.income(),
-		self.ds_balance(),
 		self.system(),
 		// self.date(),
 		self.battery(),
