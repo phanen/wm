@@ -18,6 +18,7 @@ import (
 	"wm/hypr"
 	"wm/sway"
 
+	"github.com/kovidgoyal/kitty/tools/tty"
 	"github.com/kovidgoyal/kitty/tools/tui/loop"
 	"github.com/kovidgoyal/kitty/tools/utils"
 	"github.com/kovidgoyal/kitty/tools/utils/style"
@@ -28,6 +29,17 @@ import (
 )
 
 var _ = fmt.Print
+
+// ttyDebugWriter adapts tty.DebugPrintln to io.Writer so it can be used
+// as a log sink. DebugPrintln is TUI-safe (no tty pollution), so this
+// is the right fallback when syslog/journal isn't available (i.e. when
+// ./wm bar is run directly in a terminal).
+type ttyDebugWriter struct{}
+
+func (ttyDebugWriter) Write(p []byte) (int, error) {
+	tty.DebugPrintln(strings.TrimRight(string(p), "\n"))
+	return len(p), nil
+}
 
 var DARK_GRAY, MEDIUM_GRAY, LIGHT_GRAY, GREEN, WHITE, BLACK, YELLOW, RED, ORANGE, DARK_ORANGE style.RGBA
 
@@ -823,19 +835,18 @@ func Main(args []string) {
 		os.Exit(1)
 	}
 
-	// Try to connect to syslog/systemd-journald
-	syslogger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_USER, "wm-bar")
-	if err == nil {
-		log.SetOutput(syslogger)
-		// Systemd automatically timestamps entries, so we just log the code file and line
-		log.SetFlags(log.Lshortfile)
-		log.Println("--- wm-bar inner started (syslog connected) ---")
-	} else {
-		// Fallback to stderr if syslog is unavailable
-		log.SetOutput(os.Stderr)
-		log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-		log.Println("--- wm-bar inner started (fallback to stderr) ---")
+	// Bar is a kitty TUI process — stdout/stderr both go to the same
+	// controlling tty and would interleave with the TUI state machine
+	// and corrupt the display. Route log.* through one of:
+	//   - syslog/journal (when running under systemd, the normal case)
+	//   - tty.DebugPrintln (when run directly in a terminal — TUI-safe,
+	//     no tty pollution)
+	var sink io.Writer = ttyDebugWriter{}
+	if syslogger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_USER, "wm-bar"); err == nil {
+		sink = syslogger
 	}
+	log.SetFlags(log.Lshortfile)
+	log.SetOutput(sink)
 
 	DARK_GRAY, _ = style.ParseColor(`#202020`)
 	MEDIUM_GRAY, _ = style.ParseColor(`#333333`)
