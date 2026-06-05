@@ -838,12 +838,38 @@ func Main(args []string) {
 	// Bar is a kitty TUI process — stdout/stderr both go to the same
 	// controlling tty and would interleave with the TUI state machine
 	// and corrupt the display. Route log.* through one of:
-	//   - syslog/journal (when running under systemd, the normal case)
-	//   - tty.DebugPrintln (when run directly in a terminal — TUI-safe,
-	//     no tty pollution)
-	var sink io.Writer = ttyDebugWriter{}
-	if syslogger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_USER, "wm-bar"); err == nil {
-		sink = syslogger
+	//   - syslog/journal (when running under systemd — INVOCATION_ID is
+	//     set by systemd per service invocation)
+	//   - tty.DebugPrintln (terminal run — TUI-safe, no tty pollution)
+	//
+	// Detect systemd by env, not by trying syslog.New: on most Linux
+	// desktops /dev/log is reachable even when wm bar is launched from
+	// a terminal, so a successful syslog connect is not proof of
+	// systemd supervision. INVOCATION_ID is the canonical signal.
+	//
+	// Override with $WM_BAR_LOG=syslog|tty|silent.
+	var sink io.Writer
+	switch os.Getenv("WM_BAR_LOG") {
+	case "silent":
+		sink = io.Discard
+	case "tty":
+		sink = ttyDebugWriter{}
+	case "syslog":
+		if syslogger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_USER, "wm-bar"); err == nil {
+			sink = syslogger
+		} else {
+			sink = ttyDebugWriter{}
+		}
+	default:
+		if os.Getenv("INVOCATION_ID") != "" {
+			if syslogger, err := syslog.New(syslog.LOG_INFO|syslog.LOG_USER, "wm-bar"); err == nil {
+				sink = syslogger
+			} else {
+				sink = ttyDebugWriter{}
+			}
+		} else {
+			sink = ttyDebugWriter{}
+		}
 	}
 	log.SetFlags(log.Lshortfile)
 	log.SetOutput(sink)
