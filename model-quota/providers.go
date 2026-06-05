@@ -59,9 +59,11 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 		r5, _ := asNumber(m["remains_time"])
 		rw, _ := asNumber(m["weekly_remains_time"])
 		if has5 && hasw {
-			// Width-pinned: model(1) + ":"(1) + 4 × (right-align-3 + "/") − trailing "/"
-			// = 2 + 4×4 − 1 = 17 chars per model, stable.
-			parts = append(parts, fmt.Sprintf("%s:%3d/%3d/%3d/%3d",
+			// Natural-width format: 4 fields × (1-3 chars) joined by `/`
+			// = 10-17 chars per model, hard-capped by the field count
+			// (no leading spaces; smaller values pack tighter). The
+			// total bar width is therefore bounded by 17 chars/model.
+			parts = append(parts, fmt.Sprintf("%s:%d/%d/%d/%d",
 				shortModel(name), int(p5), int(pw),
 				windowPct(r5, m["start_time"], m["end_time"]),
 				windowPct(rw, m["weekly_start_time"], m["weekly_end_time"]),
