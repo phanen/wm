@@ -75,7 +75,6 @@ func TestFetchAllGroupsByLabelAndKind(t *testing.T) {
 	planFetchers["_t2"] = func(_ context.Context, p Plan) (string, error) { return "data-" + p.Name, nil }
 	defer func() { planFetchers = prev }()
 	got := FetchAll()
-	// expected: D bal | M data-m1 data-m2 data-m3
 	want := "D bal | M data-m1 data-m2 data-m3"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -93,7 +92,6 @@ func TestFetchAllFailedPlanBreaksGroup(t *testing.T) {
 	planFetchers["_t2"] = func(_ context.Context, p Plan) (string, error) { return "data-" + p.Name, nil }
 	defer func() { planFetchers = prev }()
 	got := FetchAll()
-	// m1 and m2 should NOT be merged because of the failed plan in between
 	if !strings.Contains(got, "M data-m1") || !strings.Contains(got, "M data-m2") {
 		t.Errorf("expected both m1 and m2 separately, got %q", got)
 	}
@@ -102,37 +100,41 @@ func TestFetchAllFailedPlanBreaksGroup(t *testing.T) {
 	}
 }
 
-func TestShortHours(t *testing.T) {
+func TestWindowPct(t *testing.T) {
+	// 5h window: 18000 s total
+	// 4h remaining: 4/5 = 80
+	// 0h remaining: 0/5 = 0
+	// 5h remaining: 5/5 = 100
+	start := float64(1780624800000)
+	end := float64(1780642800000) // start + 5h
 	cases := []struct {
-		in   float64
-		want string
+		name string
+		rem  float64
+		want int
 	}{
-		{0, "0h"},
-		{3599, "0h"},
-		{3600, "1h"},
-		{18000, "5h"},
+		{"0h left", 0, 0},
+		{"half left (9000s = 2.5h)", 9000, 50},
+		{"full left (18000s = 5h)", 18000, 100},
+		{"over left (20000s)", 20000, 100}, // clamped
+		{"negative (clock skew)", -100, 0}, // clamped
 	}
 	for _, c := range cases {
-		if got := shortHours(c.in); got != c.want {
-			t.Errorf("shortHours(%v) = %q, want %q", c.in, got, c.want)
+		got := windowPct(c.rem, start, end)
+		if got != c.want {
+			t.Errorf("%s: windowPct(%v) = %d, want %d", c.name, c.rem, got, c.want)
 		}
 	}
 }
 
-func TestShortDays(t *testing.T) {
-	cases := []struct {
-		in   float64
-		want string
-	}{
-		{0, "0d"},
-		{86399, "0d"},
-		{86400, "1d"},
-		{604800, "7d"},
+func TestWindowPctMissingOrInvalid(t *testing.T) {
+	if got := windowPct(1000, nil, float64(100)); got != 0 {
+		t.Errorf("missing start: %d, want 0", got)
 	}
-	for _, c := range cases {
-		if got := shortDays(c.in); got != c.want {
-			t.Errorf("shortDays(%v) = %q, want %q", c.in, got, c.want)
-		}
+	if got := windowPct(1000, float64(0), float64(0)); got != 0 {
+		t.Errorf("zero window: %d, want 0", got)
+	}
+	if got := windowPct(1000, float64(200), float64(100)); got != 0 {
+		t.Errorf("inverted: %d, want 0", got)
 	}
 }
 

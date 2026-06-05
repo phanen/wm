@@ -8,9 +8,12 @@ import (
 )
 
 // fetchMinimaxCodingPlan queries the MiniMax "Coding Plan" (a.k.a. Token
-// Plan) quota endpoint and renders each model's remaining percent and
-// reset time as a compact fixed-width segment `<model>:xx%/yy%/Xh/Yd`,
-// joined by spaces. Boosts and status fields are ignored.
+// Plan) quota endpoint and renders each model as
+// `<model>:<5h%>/<wk%>/<5h-time%>/<wk-time%>`, all four values
+// right-aligned to 3 chars (so segment width is stable at 17 chars),
+// no `%` sign anywhere. The time fields are the percent of the
+// window still remaining (e.g. 4h left in a 5h window = 80), so the
+// bar drops when the window is about to reset.
 //
 // The renderer returns data WITHOUT a leading label; the caller adds
 // the single-letter label once per group, avoiding repeats when the
@@ -56,10 +59,13 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 		r5, _ := asNumber(m["remains_time"])
 		rw, _ := asNumber(m["weekly_remains_time"])
 		if has5 && hasw {
-			// Width-pinned format: model(1) + ":"(1) + "100%"(4) +
-			// "/"(1) + "100%"(4) + "/"(1) + "Xh"(2) + "/"(1) + "Xd"(2)
-			// = 17 chars per model, stable.
-			parts = append(parts, fmt.Sprintf("%s:%3d%%/%3d%%/%s/%s", shortModel(name), int(p5), int(pw), shortHours(r5), shortDays(rw)))
+			// Width-pinned: model(1) + ":"(1) + 4 × (right-align-3 + "/") − trailing "/"
+			// = 2 + 4×4 − 1 = 17 chars per model, stable.
+			parts = append(parts, fmt.Sprintf("%s:%3d/%3d/%3d/%3d",
+				shortModel(name), int(p5), int(pw),
+				windowPct(r5, m["start_time"], m["end_time"]),
+				windowPct(rw, m["weekly_start_time"], m["weekly_end_time"]),
+			))
 		}
 	}
 	if len(parts) == 0 {
@@ -124,30 +130,27 @@ func shortModel(name string) string {
 	return strings.ToLower(name[:1])
 }
 
-// shortHours rounds seconds down to whole hours. Always 2 chars
-// ("0h".."5h") for the 5-hour window so segment width is stable.
-func shortHours(seconds float64) string {
-	h := int(seconds / 3600)
-	if h < 0 {
-		h = 0
+// windowPct returns remaining-seconds as a percent of the total
+// window length. startMs/endMs come from /proc/...er, from the API
+// response, in milliseconds. Clamped to [0, 100] for stable width.
+func windowPct(remaining float64, startMs, endMs any) int {
+	start, sok := asNumber(startMs)
+	end, eok := asNumber(endMs)
+	if !sok || !eok || end <= start {
+		return 0
 	}
-	if h > 9 {
-		h = 9
+	totalSecs := (end - start) / 1000
+	if totalSecs <= 0 {
+		return 0
 	}
-	return fmt.Sprintf("%dh", h)
-}
-
-// shortDays rounds seconds down to whole days. Always 2 chars
-// ("0d".."7d") for the weekly window so segment width is stable.
-func shortDays(seconds float64) string {
-	d := int(seconds / 86400)
-	if d < 0 {
-		d = 0
+	pct := int(100 * remaining / totalSecs)
+	if pct < 0 {
+		return 0
 	}
-	if d > 9 {
-		d = 9
+	if pct > 100 {
+		return 100
 	}
-	return fmt.Sprintf("%dd", d)
+	return pct
 }
 
 // keep log imported for future conditional logging
