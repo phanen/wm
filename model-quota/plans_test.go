@@ -101,22 +101,19 @@ func TestFetchAllFailedPlanBreaksGroup(t *testing.T) {
 }
 
 func TestWindowPct(t *testing.T) {
-	// 5h window: 18000 s total
-	// 4h remaining: 4/5 = 80
-	// 0h remaining: 0/5 = 0
-	// 5h remaining: 5/5 = 100
+	// 5h window: 18000000 ms total. All values in milliseconds.
 	start := float64(1780624800000)
-	end := float64(1780642800000) // start + 5h
+	end := float64(1780642800000) // start + 5h = 18000000 ms
 	cases := []struct {
 		name string
 		rem  float64
 		want int
 	}{
 		{"0h left", 0, 0},
-		{"half left (9000s = 2.5h)", 9000, 50},
-		{"full left (18000s = 5h)", 18000, 100},
-		{"over left (20000s)", 20000, 100}, // clamped
-		{"negative (clock skew)", -100, 0}, // clamped
+		{"2.5h left (9000000 ms)", 9000000, 50},
+		{"full 5h left (18000000 ms)", 18000000, 100},
+		{"over 5h (20000000 ms)", 20000000, 100}, // clamped
+		{"negative (clock skew)", -100, 0},        // clamped
 	}
 	for _, c := range cases {
 		got := windowPct(c.rem, start, end)

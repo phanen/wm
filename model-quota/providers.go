@@ -130,20 +130,22 @@ func shortModel(name string) string {
 	return strings.ToLower(name[:1])
 }
 
-// windowPct returns remaining-seconds as a percent of the total
-// window length. startMs/endMs come from /proc/...er, from the API
-// response, in milliseconds. Clamped to [0, 100] for stable width.
-func windowPct(remaining float64, startMs, endMs any) int {
+// windowPct returns the percent of the total window still
+// remaining. All three values (remaining, startMs, endMs) are in
+// the same unit (milliseconds — see the API's `remains_time`,
+// `start_time`, `end_time` fields), so no conversion is needed;
+// just clamp to [0, 100] for stable bar width.
+func windowPct(remainingMs float64, startMs, endMs any) int {
 	start, sok := asNumber(startMs)
 	end, eok := asNumber(endMs)
 	if !sok || !eok || end <= start {
 		return 0
 	}
-	totalSecs := (end - start) / 1000
-	if totalSecs <= 0 {
+	totalMs := end - start
+	if totalMs <= 0 {
 		return 0
 	}
-	pct := int(100 * remaining / totalSecs)
+	pct := int(100 * remainingMs / totalMs)
 	if pct < 0 {
 		return 0
 	}
