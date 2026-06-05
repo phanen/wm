@@ -286,7 +286,8 @@ func (self *state) system_load() (s Segment) {
 		case normalized < 1:
 			fg = YELLOW
 		}
-		return colored_text(fmt.Sprintf("%d", int(normalized*100)), fg)
+		// 2 digits to keep the segment width stable (0..99, then 100+ clamps)
+		return colored_text(fmt.Sprintf("%2d", int(normalized*100)), fg)
 
 	}
 	return default_segment(fmt.Sprintf(" %s %s %s ", f(a), f(b), f(c)))
@@ -364,8 +365,15 @@ func (self *state) network_load() (s Segment) {
 			precision = "%.0f"
 			rate = math.Round(rate)
 		}
-		r := colored_text(fmt.Sprintf(precision+suffix, rate), WHITE)
-		return fmt.Sprintf("%6s", prefix+r)
+		rateStr := fmt.Sprintf(precision+suffix, rate)
+		// Right-align to a fixed 5-cell width so the segment doesn't
+		// jitter as the value flips between 256B and 1.2MB.
+		if w := wcswidth.Stringwidth(rateStr); w < 5 {
+			rateStr = strings.Repeat(" ", 5-w) + rateStr
+		} else if w > 5 {
+			rateStr = wcswidth.TruncateToVisualLength(rateStr, 5)
+		}
+		return prefix + colored_text(rateStr, WHITE)
 	}
 	r := f(rx, prev.rx, `⬇`, GREEN)
 	t := f(tx, prev.tx, `⬆`, RED)
@@ -401,7 +409,7 @@ func (self *state) memory_usage() (s Segment) {
 	}
 	used := total - available
 	percent := float64(used) / float64(total) * 100
-	return default_segment(fmt.Sprintf(" %d%% ", int(percent)))
+	return default_segment(fmt.Sprintf(" %2d%% ", int(percent)))
 }
 
 func (self *state) cpu_usage() (s Segment) {
@@ -438,7 +446,7 @@ func (self *state) cpu_usage() (s Segment) {
 		return
 	}
 	percent := 100 * float64(dt-di) / float64(dt)
-	return default_segment(fmt.Sprintf(" %d%% ", int(percent)))
+	return default_segment(fmt.Sprintf(" %2d%% ", int(percent)))
 }
 
 func (self *state) system() (s Segment) {
