@@ -29,6 +29,7 @@ import (
 )
 
 var _ = fmt.Print
+var debugprintln = tty.DebugPrintln
 
 // ttyDebugWriter adapts tty.DebugPrintln to io.Writer so it can be used
 // as a log sink. DebugPrintln is TUI-safe (no tty pollution), so this
@@ -588,20 +589,14 @@ func (self *state) income() (s Segment) {
 		self.income_data.fg, _ = style.ParseColor(`#ADD8E6`)
 
 		plans := modelquota.LoadPlans()
-		log.Printf("income: starting, %d plans configured, polling every 60s", len(plans))
-		for i, p := range plans {
-			log.Printf("income:   plan[%d] name=%s kind=%s region=%s token_env=%s label=%s",
-				i, p.Name, p.Kind, p.Region, p.TokenEnv, p.Label)
-		}
+		log.Printf("income: starting, %d plans", len(plans))
 
 		go func() {
 			for {
-				log.Println("income: tick — FetchAll()")
 				income := modelquota.FetchAll()
 				if income == "" {
-					log.Println("income: empty result (all plans failed or none configured — see stderr from model-quota)")
+					log.Println("income: empty (all plans failed)")
 				} else {
-					log.Printf("income: got %q", truncateForLog(income, 200))
 					self.lock.Lock()
 					self.income_data.val = " " + income + " "
 					self.lock.Unlock()

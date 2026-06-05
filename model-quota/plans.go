@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -107,6 +108,7 @@ func FetchAllContext(parent context.Context) string {
 	results := make([]string, len(plans))
 	var wg sync.WaitGroup
 	wg.Add(len(plans))
+	plans = dedupLabels(plans)
 	log.Printf("model-quota: fetching %d plans (sep=%q)", len(plans), sep)
 	for i, p := range plans {
 		go func(i int, p Plan) {
@@ -124,6 +126,28 @@ func FetchAllContext(parent context.Context) string {
 	joined := strings.Join(out, sep)
 	log.Printf("model-quota: %d/%d plans succeeded, %d bytes", len(out), len(plans), len(joined))
 	return joined
+}
+
+// dedupLabels appends `·N` to plans whose label collides with another
+// plan in the same list, so the bar can tell them apart. The first
+// occurrence keeps the bare label; subsequent ones get a suffix.
+func dedupLabels(plans []Plan) []Plan {
+	counts := map[string]int{}
+	for _, p := range plans {
+		if p.Label != "" {
+			counts[p.Label]++
+		}
+	}
+	seen := map[string]int{}
+	out := make([]Plan, len(plans))
+	for i, p := range plans {
+		out[i] = p
+		if p.Label != "" && counts[p.Label] > 1 {
+			seen[p.Label]++
+			out[i].Label = p.Label + "·" + strconv.Itoa(seen[p.Label])
+		}
+	}
+	return out
 }
 
 func fetchOne(parent context.Context, p Plan) string {

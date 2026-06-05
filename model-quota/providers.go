@@ -8,12 +8,9 @@ import (
 )
 
 // fetchMinimaxCodingPlan queries the MiniMax "Coding Plan" (a.k.a. Token
-// Plan) quota endpoint and formats the 5-hour and weekly windows as
-// "<model>:5h=N%(reset) wk=N%(reset)" segments, one per model_remains entry.
-//
-// The response also reports a permille "boost" multiplier and several
-// status fields; these are intentionally ignored because the rendered
-// percent and reset duration are the only signals a status bar needs.
+// Plan) quota endpoint and renders each model's 5-hour and weekly
+// remaining percentage as a compact `xx%/yy%` segment, joined by
+// spaces. Boosts and status fields are ignored.
 func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 	base := "https://api.minimax.io"
 	if p.Region == "cn" || p.Region == "minimax_cn" {
@@ -23,9 +20,7 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 	if token == "" {
 		return "", fmt.Errorf("token unset")
 	}
-	url := base + "/v1/api/openplatform/coding_plan/remains"
-	log.Printf("model-quota: [%s] GET %s", p.Name, url)
-	data, err := httpGetJSON(ctx, url, map[string]string{
+	data, err := httpGetJSON(ctx, base+"/v1/api/openplatform/coding_plan/remains", map[string]string{
 		"Authorization": "Bearer " + token,
 		"Accept":        "application/json",
 		"User-Agent":    UserAgent,
@@ -36,7 +31,6 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 	if baseResp, ok := data["base_resp"].(map[string]any); ok {
 		if code, _ := asNumber(baseResp["status_code"]); code != 0 {
 			msg, _ := baseResp["status_msg"].(string)
-			log.Printf("model-quota: [%s] api status=%v msg=%s", p.Name, code, msg)
 			if code == 1004 {
 				return "", fmt.Errorf("token invalid or expired")
 			}
@@ -44,7 +38,6 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 		}
 	}
 	raw, _ := data["model_remains"].([]any)
-	log.Printf("model-quota: [%s] %d model_remains entries", p.Name, len(raw))
 	if len(raw) == 0 {
 		return "", fmt.Errorf("no model_remains (no active plan?)")
 	}
@@ -54,33 +47,26 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 		if !ok {
 			continue
 		}
-		name, _ := m["model_name"].(string)
-		if name == "" {
-			name = "?"
-		}
 		p5, has5 := asNumber(m["current_interval_remaining_percent"])
 		pw, hasw := asNumber(m["current_weekly_remaining_percent"])
-		r5, _ := asNumber(m["remains_time"])
-		rw, _ := asNumber(m["weekly_remains_time"])
 		if has5 && hasw {
-			parts = append(parts, fmt.Sprintf("%s:5h=%d%%/%s wk=%d%%/%s", name, int(p5), fmtDur(r5), int(pw), fmtDur(rw)))
-		} else {
-			parts = append(parts, name+":--")
+			parts = append(parts, fmt.Sprintf("%d%%/%d%%", int(p5), int(pw)))
 		}
+	}
+	if len(parts) == 0 {
+		return "", fmt.Errorf("no usable model_remains entries")
 	}
 	return p.displayLabel() + " " + strings.Join(parts, " "), nil
 }
 
-// fetchDeepseekBalance queries the DeepSeek account balance endpoint and
-// formats it as "<label> <sym><balance>".
+// fetchDeepseekBalance queries the DeepSeek account balance endpoint
+// and formats it as "<label> <sym><balance>".
 func fetchDeepseekBalance(ctx context.Context, p Plan) (string, error) {
 	token := p.token()
 	if token == "" {
 		return "", fmt.Errorf("token unset")
 	}
-	url := "https://api.deepseek.com/user/balance"
-	log.Printf("model-quota: [%s] GET %s", p.Name, url)
-	data, err := httpGetJSON(ctx, url, map[string]string{
+	data, err := httpGetJSON(ctx, "https://api.deepseek.com/user/balance", map[string]string{
 		"Authorization": "Bearer " + token,
 		"Accept":        "application/json",
 		"User-Agent":    UserAgent,
@@ -92,7 +78,6 @@ func fetchDeepseekBalance(ctx context.Context, p Plan) (string, error) {
 		return "", fmt.Errorf("account not available")
 	}
 	raw, _ := data["balance_infos"].([]any)
-	log.Printf("model-quota: [%s] %d balance entries", p.Name, len(raw))
 	if len(raw) == 0 {
 		return "", fmt.Errorf("no balance info")
 	}
@@ -108,6 +93,9 @@ func fetchDeepseekBalance(ctx context.Context, p Plan) (string, error) {
 	}
 	return p.displayLabel() + " " + sym + bal, nil
 }
+
+// keep log imported for future conditional logging
+var _ = log.Printf
 
 // planFetchers is the registry of known provider fetchers. New providers
 // are added by extending this map.
