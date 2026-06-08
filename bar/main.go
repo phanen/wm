@@ -42,6 +42,27 @@ func (ttyDebugWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// heartbeatLoop writes the current PID + nanosecond timestamp to path
+// every interval, unconditionally. Intentionally not tied to the TUI
+// loop or the income poll — it must keep ticking even if both are stuck.
+func heartbeatLoop(path string) {
+	const interval = 5 * time.Second
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	write := func() {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+		fmt.Fprintf(f, "%d %d\n", os.Getpid(), time.Now().UnixNano())
+	}
+	write() // write once immediately so the file exists from the start
+	for range tick.C {
+		write()
+	}
+}
+
 var DARK_GRAY, MEDIUM_GRAY, LIGHT_GRAY, GREEN, WHITE, BLACK, YELLOW, RED, ORANGE, DARK_ORANGE style.RGBA
 
 const (
@@ -935,6 +956,16 @@ func Main(args []string) {
 	}
 	log.SetFlags(log.Lshortfile)
 	log.SetOutput(sink)
+
+	// Heartbeat: periodically rewrite a tiny file with our PID + mtime.
+	// If wm-bar ever goes silent (main thread blocked, dead, or wedged
+	// in a syscall that survived sleep/resume), the file's mtime stops
+	// advancing and an external watchdog can `stat` it to notice.
+	// We do this in its own goroutine, completely decoupled from the
+	// kitty TUI loop, so even a hung TUI loop can't suppress it.
+	if path := os.Getenv("WM_BAR_HEARTBEAT"); path != "" {
+		go heartbeatLoop(path)
+	}
 
 	DARK_GRAY, _ = style.ParseColor(`#202020`)
 	MEDIUM_GRAY, _ = style.ParseColor(`#333333`)
