@@ -3,7 +3,6 @@ package modelquota
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -156,9 +155,6 @@ func windowPct(remainingMs float64, startMs, endMs any) int {
 	}
 	return pct
 }
-
-// keep log imported for future conditional logging
-var _ = log.Printf
 
 // planFetchers is the registry of known provider fetchers. New providers
 // are added by extending this map.
