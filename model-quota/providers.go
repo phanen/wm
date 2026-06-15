@@ -53,6 +53,9 @@ func fetchMinimaxCodingPlan(ctx context.Context, p Plan) (string, error) {
 			continue
 		}
 		name, _ := m["model_name"].(string)
+		if name != "general" {
+			continue
+		}
 		p5, has5 := asNumber(m["current_interval_remaining_percent"])
 		pw, hasw := asNumber(m["current_weekly_remaining_percent"])
 		r5, _ := asNumber(m["remains_time"])
