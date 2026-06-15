@@ -160,3 +160,66 @@ func TestPlanInitialLabel(t *testing.T) {
 		t.Errorf("minimax2 -> M")
 	}
 }
+
+func TestStripJSONC(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "single-line comment",
+			in:   "// header\n[{\"a\":1}]",
+			want: "\n[{\"a\":1}]",
+		},
+		{
+			name: "trailing-comma object",
+			in:   `[{"a":1, "b":2,},]`,
+			want: `[{"a":1, "b":2}]`,
+		},
+		{
+			name: "multi-line block comment",
+			in:   "/* drop me */[{\"a\":1}]/* tail */",
+			want: `[{"a":1}]`,
+		},
+		{
+			name: "comment-between-tokens",
+			in:   "[\n// one\n{\"a\":1,}\n// two\n]",
+			want: "[\n\n{\"a\":1}\n\n]",
+		},
+		{
+			name: "url-inside-string-not-a-comment",
+			in:   `[{"url":"https://x.test/path","k":1,}]`,
+			want: `[{"url":"https://x.test/path","k":1}]`,
+		},
+		{
+			name: "escaped-quote-then-slash",
+			in:   `[{"a":"a\"b//c","k":1,}]`,
+			want: `[{"a":"a\"b//c","k":1}]`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := stripJSONC(c.in); got != c.want {
+				t.Errorf("stripJSONC(%q)\n  got:  %q\n  want: %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestLoadPlansFromJSONC(t *testing.T) {
+	t.Setenv("WM_PLANS", `[
+		// one
+		{"name":"a","label":"A","kind":"deepseek_balance","token":"k1"},
+		/* two */
+		{"name":"b","label":"B","kind":"deepseek_balance","token":"k2",}, // trailing comma allowed
+	]`)
+	t.Setenv("WM_PLANS_FILE", "")
+	plans := LoadPlans()
+	if len(plans) != 2 {
+		t.Fatalf("got %d plans, want 2", len(plans))
+	}
+	if plans[0].Name != "a" || plans[1].Name != "b" {
+		t.Errorf("unexpected: %+v", plans)
+	}
+}

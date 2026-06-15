@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -54,8 +55,10 @@ func (p Plan) initialLabel() string {
 	return strings.ToUpper(l[:1])
 }
 
-// LoadPlans reads WM_PLANS (JSON) or falls back to $WM_PLANS_FILE or
+// LoadPlans reads WM_PLANS (JSONC) or falls back to $WM_PLANS_FILE or
 // ~/.config/wm/plans.json. Returns nil if nothing is configured.
+// The input is JSONC: // and /* */ comments plus trailing commas are
+// stripped before json.Unmarshal sees it.
 func LoadPlans() []Plan {
 	var source string
 	raw := os.Getenv("WM_PLANS")
@@ -81,6 +84,7 @@ func LoadPlans() []Plan {
 		log.Printf("model-quota: no plans configured (set $WM_PLANS or write ~/.config/wm/plans.json)")
 		return nil
 	}
+	raw = stripJSONC(raw)
 	var plans []Plan
 	if err := json.Unmarshal([]byte(raw), &plans); err != nil {
 		log.Printf("model-quota: parse %s: %v", source, err)
@@ -89,6 +93,69 @@ func LoadPlans() []Plan {
 	log.Printf("model-quota: loaded %d plans from %s", len(plans), source)
 	return plans
 }
+
+// stripJSONC converts a JSONC document (JSON with // and /* */ comments
+// and trailing commas) into strict JSON that json.Unmarshal can
+// consume. Comments and string contents are tracked separately so
+// `//` and `/*` inside a string value are left alone. Trailing commas
+// are removed by regex after comment stripping, which is correct for
+// the WM_PLANS shape (objects/arrays of plan entries — no string
+// values contain `,}` or `,]`).
+func stripJSONC(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	inString, escape := false, false
+	for i := 0; i < len(s); {
+		c := s[i]
+		if inString {
+			b.WriteByte(c)
+			if escape {
+				escape = false
+			} else if c == '\\' {
+				escape = true
+			} else if c == '"' {
+				inString = false
+			}
+			i++
+			continue
+		}
+		if c == '"' {
+			inString = true
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		if c == '/' && i+1 < len(s) {
+			if s[i+1] == '/' {
+				// Skip the comment, then keep the terminating newline
+				// (so the rest of the line that follows the comment
+				// is still emitted by the outer loop). If the file
+				// ends without a newline, we just stop.
+				for i < len(s) && s[i] != '\n' {
+					i++
+				}
+				continue
+			}
+			if s[i+1] == '*' {
+				i += 2
+				for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+					i++
+				}
+				if i+1 < len(s) {
+					i += 2
+				} else {
+					i = len(s)
+				}
+				continue
+			}
+		}
+		b.WriteByte(c)
+		i++
+	}
+	return trailingCommaRE.ReplaceAllString(b.String(), "$1")
+}
+
+var trailingCommaRE = regexp.MustCompile(`,\s*([}\]])`)
 
 // PlanFetcher returns the rendered data segment for a plan (without
 // a leading label — the caller prefixes the group initial).
