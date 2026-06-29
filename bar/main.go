@@ -440,7 +440,39 @@ func (self *state) memory_usage() (s Segment) {
 	}
 	used := total - available
 	percent := float64(used) / float64(total) * 100
-	return default_segment(fmt.Sprintf(" %2d%% ", int(percent)))
+
+	text := fmt.Sprintf(" %2d%% ", int(percent))
+	if ratio, ok := zram_ratio(); ok {
+		fg := WHITE
+		switch {
+		case ratio >= 2.5:
+			fg = GREEN
+		case ratio < 1.5:
+			fg = YELLOW
+		}
+		text += colored_text(fmt.Sprintf("%.1f ", ratio), fg)
+	}
+	return default_segment(text)
+}
+
+// zram_ratio reads /sys/block/zram0/mm_stat and returns the
+// uncompressed-to-compressed ratio. ok is false when zram is absent,
+// empty, or the file is unreadable.
+func zram_ratio() (float64, bool) {
+	data, err := os.ReadFile("/sys/block/zram0/mm_stat")
+	if err != nil {
+		return 0, false
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 2 {
+		return 0, false
+	}
+	orig, err1 := strconv.ParseUint(fields[0], 10, 64)
+	compr, err2 := strconv.ParseUint(fields[1], 10, 64)
+	if err1 != nil || err2 != nil || orig == 0 || compr == 0 {
+		return 0, false
+	}
+	return float64(orig) / float64(compr), true
 }
 
 func (self *state) cpu_usage() (s Segment) {
