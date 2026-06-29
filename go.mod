@@ -19,7 +19,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kovidgoyal/go-parallel v1.1.1 // indirect
 	github.com/kovidgoyal/go-shm v1.0.0 // indirect
-	github.com/kovidgoyal/imaging v1.8.21 // indirect
+	github.com/kovidgoyal/imaging v1.8.22 // indirect
 	github.com/lufia/plan9stats v0.0.0-20230326075908-cb1d2100619a // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd // indirect
@@ -30,7 +30,7 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b // indirect
-	golang.org/x/image v0.42.0 // indirect
+	golang.org/x/image v0.43.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	howett.net/plist v1.0.1 // indirect
 )

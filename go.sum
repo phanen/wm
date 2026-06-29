@@ -18,8 +18,8 @@ github.com/kovidgoyal/go-parallel v1.1.1 h1:1OzpNjtrUkBPq3UaqrnvOoB2F9RttSt811ui
 github.com/kovidgoyal/go-parallel v1.1.1/go.mod h1:BJNIbe6+hxyFWv7n6oEDPj3PA5qSw5OCtf0hcVxWJiw=
 github.com/kovidgoyal/go-shm v1.0.0 h1:HJEel9D1F9YhULvClEHJLawoRSj/1u/EDV7MJbBPgQo=
 github.com/kovidgoyal/go-shm v1.0.0/go.mod h1:Yzb80Xf9L3kaoB2RGok9hHwMIt7Oif61kT6t3+VnZds=
-github.com/kovidgoyal/imaging v1.8.21 h1:95S2+dowTeKJJHNpf6lnScvIennTr2H0zQotu+ptNQw=
-github.com/kovidgoyal/imaging v1.8.21/go.mod h1:976F+zjiQeZ7sd87Pxlm0a64S/w9bImSIWg3sSk1rdQ=
+github.com/kovidgoyal/imaging v1.8.22 h1:CtpoRXQpS79xxJsKu8+LUJJE/0i4FLquJZy0QH+QNlM=
+github.com/kovidgoyal/imaging v1.8.22/go.mod h1:y8wo4JTv4D+skbtQf6fHg8nA1qtagvCcn8J2Nu5k2Jg=
 github.com/lufia/plan9stats v0.0.0-20230326075908-cb1d2100619a h1:N9zuLhTvBSRt0gWSiJswwQ2HqDmtX/ZCDJURnKUt1Ik=
 github.com/lufia/plan9stats v0.0.0-20230326075908-cb1d2100619a/go.mod h1:JKx41uQRwqlTZabZc+kILPrO/3jlKnQ2Z8b7YiVw5cE=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
@@ -44,8 +44,8 @@ github.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo
 github.com/yusufpapurcu/wmi v1.2.4/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
 golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b h1:r+vk0EmXNmekl0S0BascoeeoHk/L7wmaW2QF90K+kYI=
 golang.org/x/exp v0.0.0-20230801115018-d63ba01acd4b/go.mod h1:FXUEEKJgO7OQYeo8N01OfiKP8RXMtf6e8aTskBGqWdc=
-golang.org/x/image v0.42.0 h1:1gSs6ehNWXLbkHBIPcWztk3D/6aIA/8hauiAYtlodVY=
-golang.org/x/image v0.42.0/go.mod h1:rrpelvGFt+kLPAjPM4HeWPgrl0FtafueU//e5N0qk/Q=
+golang.org/x/image v0.43.0 h1:FLxcP4ec2350nTfOC8ysKtqYSIFbk/QGjw1ZHNP4tsY=
+golang.org/x/image v0.43.0/go.mod h1:rrpelvGFt+kLPAjPM4HeWPgrl0FtafueU//e5N0qk/Q=
 golang.org/x/sys v0.0.0-20190916202348-b4ddaad3f8a3/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20201204225414-ed752295db88/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.46.0 h1:noSf2Fq6F8DBgS+LysIkx7rIExoNHJsxOAtPp4rthXw=
