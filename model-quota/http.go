@@ -56,10 +56,7 @@ func asNumber(v any) (float64, bool) {
 // fmtDur renders a seconds count as a short human-readable string.
 // Examples: 45 -> "45s", 130 -> "2m", 3700 -> "1h1m", 90000 -> "1d1h".
 func fmtDur(seconds float64) string {
-	s := int(seconds)
-	if s < 0 {
-		s = 0
-	}
+	s := max(int(seconds), 0)
 	switch {
 	case s < 60:
 		return fmt.Sprintf("%ds", s)

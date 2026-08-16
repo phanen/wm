@@ -423,7 +423,7 @@ func (self *state) memory_usage() (s Segment) {
 		return
 	}
 	var total, available uint64
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue
@@ -534,8 +534,8 @@ func (self *state) cpu_usage() (s Segment) {
 // indices are left zero. The aggregate "cpu" line is skipped.
 func parsePerCoreCpu(s string, maxCores int) []cpuCoreStat {
 	out := make([]cpuCoreStat, maxCores)
-	lines := strings.Split(s, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(s, "\n")
+	for line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) < 5 || len(fields[0]) < 4 {
 			continue
